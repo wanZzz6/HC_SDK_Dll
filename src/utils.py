@@ -1,6 +1,8 @@
 import ctypes
+import datetime
 import os
 import re
+import uuid
 
 struct_body = re.compile(r'struct\s*\{(.*)\}\s*([\w_]+)', re.DOTALL)
 num_pattern = re.compile(r'\s*(\w+)\s+(\w+)\s*\[*(\s*\w+\s*)*\]*\s*;')
@@ -15,6 +17,14 @@ def load_dll(path):
         return dll_lib
     finally:
         os.chdir(cwd)
+
+
+def gen_file_name(extention='jpg', way='time') -> str:
+    if way == 'time':
+        name = datetime.datetime.now().strftime('%Y-%m-%d %H.%M.%S.%f')
+    else:
+        name = uuid.uuid4().hex
+    return "{}.{}".format(name, extention)
 
 
 def gen_structure(doc_str: str, tab_size: int = 4) -> str:

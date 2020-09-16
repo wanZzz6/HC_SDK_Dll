@@ -48,12 +48,17 @@ Python整数作为平台默认的C int类型传递，它们的值被屏蔽以适
 1. 基本类型：转换参照上表
 2. 指针类型： 传入 `byref(xxx)` 
 3. char* : 传入 `bytes(xxx, 'utf-8'))`
-
+4. 缓冲区指针：
+    - 开辟：`buf = ctypes.create_string_buffer(缓冲大小)`
+    - 读取: `buf.raw` 或者 `buf.value`
+5. `LPDWORD`
+    - 方式一：先创建 `a = ctypes.c_ulong(0)`，再传入 `bytef(a)`，事后打印 `a.value`
+    - 方式二：先创建 `a = LPDWORD(ctypes.c_ulong(0))`， 直接传入 `a`，事后打印 `a[0]`
 ### 回调函数
 
-1. 声明：callback = CFUNCTYPE（返回值类型，参数1类型， 参数2类型，。。。）
-2. 定义 python 实现方法 imp_callback(参数1，参数2，。。。)
-3. 创建回调函数对象：func = CMPFUNC（imp_callback）
+1. 声明：`callback = CFUNCTYPE（返回值类型，参数1类型， 参数2类型，。。。）`
+2. 定义 python 实现方法 `imp_callback(参数1，参数2，。。。)`
+3. 创建回调函数对象：`func = CMPFUNC（imp_callback）`
 
 ### 错误码
 

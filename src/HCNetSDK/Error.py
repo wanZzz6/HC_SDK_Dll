@@ -1,4 +1,4 @@
-__all__ = ['ErrorMsg', 'ErrorCode']
+__all__ = ['ErrorMsg', 'ErrorCode', 'get_error_msg']
 
 
 class ErrorCode:

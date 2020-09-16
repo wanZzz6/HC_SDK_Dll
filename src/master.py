@@ -1,11 +1,12 @@
-import datetime
+import ctypes
 import logging
 from ctypes import byref, c_long
+from ctypes.wintypes import LPDWORD
 
 from HCNetSDK import Callback
 from HCNetSDK import Structure
 from HCNetSDK.Error import get_error_msg
-from utils import load_dll
+from utils import load_dll, gen_file_name
 
 logging.basicConfig(level='DEBUG')
 
@@ -186,28 +187,42 @@ class HCTools(object):
         """设备抓图，保存到本地jpeg图片"""
         logger.debug('单帧数据捕获并保存jpg'.center(24, '-'))
         if not pic_name:
-            time_now = datetime.datetime.now().strftime('%Y-%m-%d %H.%M.%S.%f')
-            pic_name = str(self.lUserID) + "_" + time_now + ".jpg"
+            pic_name = gen_file_name('jpg')
         logger.debug(pic_name)
         jpeg_param = Structure.NET_DVR_JPEGPARA(wPicSize=PicSize, wPicQuality=quality)
         return self.hCNetSDK.NET_DVR_CaptureJPEGPicture(self.lUserID, channel, byref(jpeg_param),
                                                         bytes(pic_name, 'utf-8'))
 
     @_log_execute_result
-    def IPC_captureJPEGPicture_NEW(self, channel: c_long = 1, pic_name=None, quality=2, PicSize=0xff):
+    def IPC_captureJPEGPicture_NEW(self, channel: c_long = 1, pic_name=None, quality=2, pic_size=0xff):
         """单帧数据捕获并保存成JPEG存放在指定的内存空间中。"""
-        logger.debug('单帧抓图joeg并保存到内存'.center(24, '-'))
+        logger.debug('单帧抓图jpeg并保存到内存'.center(24, '-'))
+        if not pic_name:
+            pic_name = gen_file_name('jpg')
+        logger.debug(pic_name)
+        jpeg_param = Structure.NET_DVR_JPEGPARA(wPicSize=pic_size, wPicQuality=quality)
+        buffer_size = 1024 * 1024
+        sJpegPicBuffer = ctypes.create_string_buffer(buffer_size)
+        lpSizeReturned = LPDWORD(ctypes.c_ulong(0))
+        if self.hCNetSDK.NET_DVR_CaptureJPEGPicture_NEW(self.lUserID, channel, byref(jpeg_param), sJpegPicBuffer,
+                                                        buffer_size, ctypes.byref(lpSizeReturned)):
+            logger.debug('抓图成功')
+            with open(pic_name, 'wb') as f:
+                f.write(sJpegPicBuffer.raw)
+                logger.debug('图片大小: %s', lpSizeReturned[0])
+            return True
+        return False
 
+    # todo 未实现
     @_log_execute_result
-    def IPC_captureBMPicture(self, channel: c_long = 1, pic_name=None, quality=2, PicSize=0xff):
+    def IPC_captureBMPicture(self, channel: c_long = 1, pic_name=None):
         """设备抓图，保存到本地bmp图片,
         要求在调用NET_DVR_RealPlay_V40等接口时传入非空的播放句柄（播放库解码显示），否则时接口会返回失败，调用次序错误。
         """
         logger.debug('单帧数据捕获并保存bmp'.center(24, '-'))
         self.IPC_setCapturePictureMode(0)
         if not pic_name:
-            time_now = datetime.datetime.now().strftime('%Y-%m-%d %H.%M.%S.%f')
-            pic_name = str(self.lUserID) + "_" + time_now + ".bmp"
+            pic_name = gen_file_name('bmp')
         logger.debug(pic_name)
         if self.lRealPlayHandle == -1:
             self.IPC_preview(callback=None)
@@ -243,7 +258,8 @@ if __name__ == '__main__':
     print(tool.sys_get_error_info())
 
     # tool.IPC_preview()
-    tool.IPC_captureBMPicture()
+    # tool.IPC_captureBMPicture()
+    tool.IPC_captureJPEGPicture_NEW(pic_size=2)
     time.sleep(2)
 
     tool.sys_clean_up()
