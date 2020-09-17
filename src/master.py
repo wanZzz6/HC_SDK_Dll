@@ -4,7 +4,7 @@ from ctypes import byref, c_long
 from ctypes.wintypes import LPDWORD
 
 from HCNetSDK import Callback
-from HCNetSDK import Structure
+from HCNetSDK import Struct
 from HCNetSDK.Error import get_error_msg
 from utils import load_dll, gen_file_name
 
@@ -104,7 +104,7 @@ class HCTools(object):
         # 先注销
         self.sys_logout()
         # 登录设备
-        device_info = Structure.NET_DVR_DEVICEINFO_V30()
+        device_info = Struct.NET_DVR_DEVICEINFO_V30()
         self.lUserID = self.hCNetSDK.NET_DVR_Login_V30(bytes(self.sIp, 'utf-8'), self.sPort,
                                                        bytes(self.sUsername, 'utf-8'), bytes(self.sPassword, 'utf-8'),
                                                        byref(device_info))
@@ -113,6 +113,49 @@ class HCTools(object):
         else:
             logger.debug('登陆成功，lUserID:{}'.format(self.lUserID))
             return True
+
+    def sys_logout(self):
+        """注销"""
+        if self.lUserID > 1:
+            self.hCNetSDK.NET_DVR_Logout(self.lUserID)
+            self.lUserID = -1
+
+    def sys_clean_up(self):
+        """撤防 + 注销 + 释放SDK资源"""
+        self.sys_close_alarm_chan()
+
+        self.IPC_stop_real_play()
+        self.sys_logout()
+        self.hCNetSDK.NET_DVR_Cleanup()
+        logger.debug('已释放所有资源'.center(24, '-'))
+
+    def __del__(self):
+        self.sys_clean_up()
+
+    @_log_execute_result
+    def setup_alarm_chan(self):
+        """布防监听"""
+        if not self.hCNetSDK.NET_DVR_SetDVRMessageCallBack_V31(Callback.fMessageCallBack, ctypes.c_void_p()):
+            logger.error('设置布防回调函数失败')
+            return
+        lpSetupParam = Struct.NET_DVR_SETUPALARM_PARAM()
+        # 报警布防参数
+        lpSetupParam.byLevel = 1
+        lpSetupParam.byAlarmInfoType = 1
+        lpSetupParam.byDeployType = 1
+        self.lAlarmHandle = self.hCNetSDK.NET_DVR_SetupAlarmChan_V41(self.lUserID, byref(lpSetupParam))
+        return self.lAlarmHandle > -1
+
+    @_log_execute_result
+    def sys_close_alarm_chan(self):
+        """撤防"""
+        logger.debug('撤防操作'.center(24, '-'))
+        if self.lAlarmHandle > -1:
+            if self.hCNetSDK.NET_DVR_CloseAlarmChan_V30(self.lAlarmHandle):
+                self.lAlarmHandle = -1
+                return True
+            return False
+        return True
 
     @_log_execute_result
     def door_open(self, door_index=1) -> bool:
@@ -136,17 +179,6 @@ class HCTools(object):
         return self.hCNetSDK.NET_DVR_ControlGateway(self.lUserID, door_index, status)
 
     @_log_execute_result
-    def sys_close_alarm_chan(self):
-        """撤防"""
-        logger.debug('撤防操作'.center(24, '-'))
-        if self.lAlarmHandle > -1:
-            if self.hCNetSDK.NET_DVR_CloseAlarmChan_V30(self.lAlarmHandle):
-                self.lAlarmHandle = -1
-                return True
-            return False
-        return True
-
-    @_log_execute_result
     def IPC_stop_real_play(self):
         """停止预览"""
         if self.lRealPlayHandle > -1:
@@ -155,24 +187,6 @@ class HCTools(object):
                 return True
             return False
         return True
-
-    def sys_logout(self):
-        """注销"""
-        if self.lUserID > 1:
-            self.hCNetSDK.NET_DVR_Logout(self.lUserID)
-            self.lUserID = -1
-
-    def sys_clean_up(self):
-        """撤防 + 注销 + 释放SDK资源"""
-        self.sys_close_alarm_chan()
-
-        self.IPC_stop_real_play()
-        self.sys_logout()
-        self.hCNetSDK.NET_DVR_Cleanup()
-        logger.debug('已释放所有资源'.center(24, '-'))
-
-    def __del__(self):
-        self.sys_clean_up()
 
     @_log_execute_result
     def IPC_setCapturePictureMode(self, dwCaptureMode):
@@ -189,7 +203,7 @@ class HCTools(object):
         if not pic_name:
             pic_name = gen_file_name('jpg')
         logger.debug(pic_name)
-        jpeg_param = Structure.NET_DVR_JPEGPARA(wPicSize=PicSize, wPicQuality=quality)
+        jpeg_param = Struct.NET_DVR_JPEGPARA(wPicSize=PicSize, wPicQuality=quality)
         return self.hCNetSDK.NET_DVR_CaptureJPEGPicture(self.lUserID, channel, byref(jpeg_param),
                                                         bytes(pic_name, 'utf-8'))
 
@@ -200,7 +214,7 @@ class HCTools(object):
         if not pic_name:
             pic_name = gen_file_name('jpg')
         logger.debug(pic_name)
-        jpeg_param = Structure.NET_DVR_JPEGPARA(wPicSize=pic_size, wPicQuality=quality)
+        jpeg_param = Struct.NET_DVR_JPEGPARA(wPicSize=pic_size, wPicQuality=quality)
         buffer_size = 1024 * 1024
         sJpegPicBuffer = ctypes.create_string_buffer(buffer_size)
         lpSizeReturned = LPDWORD(ctypes.c_ulong(0))
@@ -239,9 +253,9 @@ class HCTools(object):
         """
         # 构造预览参数结构体
         # hPlayWnd需要输入创建图形窗口的handle,没有输入无法实现BMP抓图
-        preview_info = Structure.NET_DVR_PREVIEWINFO(lChannel=channel, dwStreamType=stream_type,
-                                                     dwLinkMode=link_mode,
-                                                     bBlocked=block, **kwargs)
+        preview_info = Struct.NET_DVR_PREVIEWINFO(lChannel=channel, dwStreamType=stream_type,
+                                                  dwLinkMode=link_mode,
+                                                  bBlocked=block, **kwargs)
 
         self.lRealPlayHandle = self.hCNetSDK.NET_DVR_RealPlay_V40(self.lUserID, byref(preview_info),
                                                                   callback, None)
@@ -252,14 +266,17 @@ class HCTools(object):
 if __name__ == '__main__':
     import time
 
-    tool = HCTools('10.86.77.12', 'admin', 'admin777')  # IPC
-    # tool = HCTools('10.86.77.121', 'admin', 'admin777')  # 门禁
+    # tool = HCTools('10.86.23.111', 'admin', 'tsit2020')  # 门禁主机
+    # tool = HCTools('10.86.77.12', 'admin', 'admin777')  # IPC
+    tool = HCTools('10.86.77.119', 'admin', 'admin777')  # 门禁
     tool.sys_login()
-    print(tool.sys_get_error_info())
+    # print(tool.sys_get_error_info())
 
     # tool.IPC_preview()
     # tool.IPC_captureBMPicture()
-    tool.IPC_captureJPEGPicture_NEW(pic_size=2)
+    # tool.IPC_captureJPEGPicture_NEW(pic_size=2)
+    tool.setup_alarm_chan()
+    tool.door_open()
     time.sleep(2)
 
     tool.sys_clean_up()

@@ -63,3 +63,12 @@ Python整数作为平台默认的C int类型传递，它们的值被屏蔽以适
 ### 错误码
 
 定位到执行SDK失败的函数名，从 《海康设备SDK使用手册.chm》 文件中搜索该函数或者直接搜索`NET_DVR_GetLastError`，查看相关的错误信息
+
+### 其他
+
+- `sizeof()` 获取C（结构体）对象大小
+- `addressof()` 取C对象内存地址
+- `string_at(addr[, size])` 从地址中取字符数据
+- 👍`cast(obj, typ)` 强制转换
+- `Structure.from_buffer_copy(b'xxxx')` 从bytes流中创建结构体
+- `cast(obj, POINTER(Structure))` 将一个指针转换为结构体指针
