@@ -213,3 +213,125 @@ class NET_DVR_ACS_ALARM_INFO(Structure):
         ('pAcsEventInfoExtendV20', c_char_p),
         ('byRes', BYTE * 4),
     ]
+
+
+# 时间参数结构体
+class NET_DVR_TIME_EX(Structure):
+    _fields_ = [
+        ('wYear', WORD),
+        ('byMonth', BYTE),
+        ('byDay', BYTE),
+        ('byHour', BYTE),
+        ('byMinute', BYTE),
+        ('bySecond', BYTE),
+        ('byRes', BYTE),
+    ]
+
+
+# 有效期参数结构体。
+class NET_DVR_VALID_PERIOD_CFG(Structure):
+    _fields_ = [
+        ('byEnable', BYTE),  # 是否启用该有效期：0- 不启用，1- 启用
+        ('byBeginTimeFlag', BYTE),  # 是否限制起始时间的标志，0-不限制，1-限制
+        ('byEnableTimeFlag', BYTE),  # 是否限制终止时间的标志，0-不限制，1-限制
+        ('byTimeDurationNo', BYTE),  # 有效期索引,从0开始（时间段通过SDK设置给锁，后续在制卡时，只需要传递有效期索引即可，以减少数据量
+        ('struBeginTime', NET_DVR_TIME_EX),  # 有效期起始时间
+        ('struEndTime', NET_DVR_TIME_EX),  # 有效期结束时间
+        ('byTimeType', BYTE),  # 时间类型：0-设备本地时间（默认），1-UTC时间（对于struBeginTime，struEndTime字段有效）
+        ('byRes2', BYTE * 31),  # 保留，置为0
+    ]
+
+
+# ****************优化接口结构体定义开始*************
+NET_DVR_GET_CARD = 2560
+NET_DVR_SET_CARD = 2561
+NET_DVR_SET_FACE = 2567
+NET_DVR_DEL_CARD = 2562
+
+NET_SDK_CONFIG_STATUS_SUCCESS = 1000
+NET_SDK_CONFIG_STATUS_NEEDWAIT = 1001
+NET_SDK_CONFIG_STATUS_FINISH = 1002
+NET_SDK_CONFIG_STATUS_FAILED = 1003
+NET_SDK_CONFIG_STATUS_EXCEPTION = 1004
+
+
+class NET_DVR_CARD_COND(Structure):
+    _fields_ = [
+        ('dwSize', DWORD),
+        ('dwCardNum', DWORD),  # 设置或获取卡数量，获取时置为0xffffffff表示获取所有卡信息
+        ('byRes', BYTE * 64),
+    ]
+
+
+class NET_DVR_CARD_SEND_DATA(Structure):
+    _fields_ = [
+        ('dwSize', DWORD),
+        ('byCardNo', BYTE * ACS_CARD_NO_LEN),  # 卡号
+        ('byRes', BYTE * 16),
+    ]
+
+
+class NET_DVR_CARD_RECORD(Structure):
+    _fields_ = [
+        ('dwSize', DWORD),
+        ('byCardNo', BYTE * ACS_CARD_NO_LEN),
+        ('byCardType', BYTE),
+        ('byLeaderCard', BYTE),
+        ('byUserType', BYTE),
+        ('byRes1', BYTE),
+        ('byDoorRight', BYTE * MAX_DOOR_NUM_256),
+        ('struValid', NET_DVR_VALID_PERIOD_CFG),
+        ('byBelongGroup', BYTE * MAX_GROUP_NUM_128),
+        ('byCardPassword', BYTE * CARD_PASSWORD_LEN),
+        ('wCardRightPlan', WORD * MAX_DOOR_NUM_256),
+        ('dwMaxSwipeTimes', DWORD),
+        ('dwSwipeTimes', DWORD),
+        ('dwEmployeeNo', DWORD),
+        ('byName', BYTE * NAME_LEN),
+        # 按位表示，0-无权限，1-有权限// 第0位表示：弱电报警// 第1位表示：开门提示音// 第2位表示：限制客卡// 第3位表示：通道// 第4位表示：反锁开门// 第5位表示：巡更功能
+        ('dwCardRight', DWORD),
+        ('byRes', BYTE * 256),
+    ]
+
+
+class NET_DVR_CARD_STATUS(Structure):
+    _fields_ = [
+        ('dwSize', DWORD),
+        ('byCardNo', BYTE * ACS_CARD_NO_LEN),
+        ('dwErrorCode', DWORD),
+        ('byStatus', BYTE),  # 状态：0-失败，1-成功
+        ('byRes', BYTE * 23),
+    ]
+
+
+class NET_DVR_FACE_COND(Structure):
+    _fields_ = [
+        ('dwSize', DWORD),
+        ('byCardNo', BYTE * ACS_CARD_NO_LEN),
+        ('dwFaceNum', DWORD),
+        ('dwEnableReaderNo', DWORD),
+        ('byRes', BYTE * 124),
+    ]
+
+
+class NET_DVR_FACE_RECORD(Structure):
+    _fields_ = [
+        ('dwSize', DWORD),
+        ('byCardNo', BYTE * ACS_CARD_NO_LEN),
+        ('dwFaceLen', DWORD),
+        ('pFaceBuffer', c_char_p),
+        ('byRes', BYTE * 128),
+    ]
+
+
+class NET_DVR_FACE_STATUS(Structure):
+    _fields_ = [
+        ('dwSize', DWORD),
+        ('byCardNo', BYTE * ACS_CARD_NO_LEN),
+        ('byErrorMsg', BYTE * ERROR_MSG_LEN),
+        ('dwReaderNo', DWORD),
+        ('byRecvStatus', BYTE),
+        ('byRes', BYTE * 131),
+    ]
+
+# ****************优化接口结构体定义结束*************

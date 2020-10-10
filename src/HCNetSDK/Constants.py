@@ -228,7 +228,6 @@ MAX_URL_LEN = 240  # URL最大长度
 MAX_OPERATE_INDEX_LEN = 32  # 操作数最大长度
 MAX_FACE_PIC_NUM = 30  # 人脸子图最大个数
 CHAN_NO_LEN = 24  # 通道编号最大长度
-ACS_CARD_NO_LEN = 32
 # ************** 回调函数类型 begin ***************/
 COMM_ALARM = 0x1100
 COMM_TRADEINFO = 0x1500
@@ -251,3 +250,21 @@ COMM_VCA_ALARM = 0x4993
 COMM_PASSNUM_INFO_ALARM = 0x5201
 COMM_ISAPI_ALARM = 0x6009
 COMM_ALARM_TPS_STATISTICS = 0x3082
+
+ACS_CARD_NO_LEN = 32  # 门禁卡号长度
+MAX_GROUP_NUM_128 = 128  # 最大群组数
+MAX_DOOR_NUM_256 = 256  # 最大门数
+CARD_PASSWORD_LEN = 8  # 卡密码长度
+MAX_CARD_READER_NUM = 64  # 最大读卡器数
+MAX_DOOR_CODE_LEN = 8  # 房间代码长度
+MAX_LOCK_CODE_LEN = 8  # 锁代码长度
+MAX_CARD_RIGHT_PLAN_NUM = 4  # 卡权限最大计划个数
+
+MAX_ID_NUM_LEN = 32  # 最大身份证号长度
+MAX_ID_NAME_LEN = 128  # 最大姓名长度
+MAX_ID_ADDR_LEN = 280  # 最大住址长度
+MAX_ID_ISSUING_AUTHORITY_LEN = 128  # 最大签发机关长度
+MAX_CARD_READER_NUM_512 = 512  # 最大读卡器数
+ERROR_MSG_LEN = 32  # 下发错误信息
+MAX_FACE_NUM = 2  # 最大人脸数
+MAX_FINGER_PRINT_LEN = 768  # 最大指纹长度
