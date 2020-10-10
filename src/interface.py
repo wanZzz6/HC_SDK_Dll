@@ -1,5 +1,6 @@
 import ctypes
 import logging
+import time
 from ctypes import byref, c_long
 from ctypes.wintypes import LPDWORD
 
@@ -8,7 +9,7 @@ from HCNetSDK import Struct
 from HCNetSDK.Error import get_error_msg
 from utils import load_dll, gen_file_name
 
-logging.basicConfig(level='DEBUG')
+logging.basicConfig(level='DEBUG', format='[%(name)s:%(lineno)d] [%(levelname)s]- %(message)s')
 
 logger = logging.getLogger('SDK_Tools')
 
@@ -23,14 +24,14 @@ def _log_execute_result(func):
         if ret:
             logger.debug('操作成功')
         else:
-            logger.error('操作失败！ %s', self.sys_get_error_info())
+            logger.error('操作失败！ %s', self.sys_get_error_detail())
         return ret
 
     return warper
 
 
 # todo 单例模式
-class HCTools(object):
+class HKBaseTool(object):
     def __init__(self, ip, username, password, port=8000, sdk_path='../dll/HCNetSDK'):
         """创建实例后自动初始化SDK"""
         self.sdk_dll_path = sdk_path
@@ -47,7 +48,12 @@ class HCTools(object):
         self.logLevel = 3
         self.fMSFCallBack = None  # 报警回调函数实现
         self.fMSFCallBack_V31 = None  # 报警回调函数实现
+        self.__is_init = False
         self.sys_init_tools()
+
+    @property
+    def is_init(self):
+        return self.__is_init
 
     def sys_get_error_code(self) -> int:
         """获取错误码"""
@@ -61,7 +67,8 @@ class HCTools(object):
         # data = self.hCNetSDK.NET_DVR_GetErrorMsg(error_code)
         # return ctypes.string_at(data).decode('utf-8')
 
-    def sys_get_error_info(self):
+    def sys_get_error_detail(self):
+        """获取错误详细信息"""
         return '错误码：{}，错误信息：{}'.format(self.sys_get_error_code(), self.sys_get_error_message())
 
     def sys_init_tools(self):
@@ -73,18 +80,28 @@ class HCTools(object):
         init_res = self.hCNetSDK.NET_DVR_Init()
         if init_res:
             logger.debug("SDK初始化成功")
+            self.__is_init = True
         else:
-            raise SDKError('SDK 初始化失败：{}'.format(self.sys_get_error_info()))
+            raise SDKError('SDK 初始化失败：{}'.format(self.sys_get_error_detail()))
 
     @_log_execute_result
-    def sys_set_timeout(self, timeout=2000) -> bool:
+    def sys_get_sdk_ersion(self) -> str:
+        return hex(self.hCNetSDK.NET_DVR_GetSDKVersion())
+
+    @_log_execute_result
+    def sys_get_sdk_bulid_version(self) -> str:
+        return hex(self.hCNetSDK.NET_DVR_GetSDKBuildVersion())
+
+    @_log_execute_result
+    def sys_set_timeout(self, timeout=2000, retry_times=1) -> bool:
         """
         设置连接超时时间
-        :param timeout:
+        :param timeout: 超时时间
+        :param retry_times: 连接尝试次数
         :return:
         """
         logger.debug('设置超时时间'.center(24, '-'))
-        if self.hCNetSDK.NET_DVR_SetConnectTime(timeout, 1):
+        if self.hCNetSDK.NET_DVR_SetConnectTime(timeout, retry_times):
             return True
         return False
 
@@ -109,7 +126,7 @@ class HCTools(object):
                                                        bytes(self.sUsername, 'utf-8'), bytes(self.sPassword, 'utf-8'),
                                                        byref(device_info))
         if self.lUserID == -1:
-            raise SDKError('登陆失败, {}'.format(self.sys_get_error_info()))
+            raise SDKError('登陆失败, {}'.format(self.sys_get_error_detail()))
         else:
             logger.debug('登陆成功，lUserID:{}'.format(self.lUserID))
             return True
@@ -122,19 +139,34 @@ class HCTools(object):
 
     def sys_clean_up(self):
         """撤防 + 注销 + 释放SDK资源"""
-        self.sys_close_alarm_chan()
-
-        self.IPC_stop_real_play()
-        self.sys_logout()
-        self.hCNetSDK.NET_DVR_Cleanup()
+        if self.is_init:
+            self.sys_close_alarm_chan()
+            self.sys_logout()
+            self.hCNetSDK.NET_DVR_Cleanup()
+            self.__is_init = False
         logger.debug('已释放所有资源'.center(24, '-'))
 
     def __del__(self):
-        self.sys_clean_up()
+        if self.is_init:
+            self.sys_clean_up()
+
+    def sys_close_alarm_chan(self):
+        """撤防"""
+        if self.lAlarmHandle > -1:
+            logger.debug('撤防操作'.center(24, '-'))
+            if self.hCNetSDK.NET_DVR_CloseAlarmChan_V30(self.lAlarmHandle):
+                self.lAlarmHandle = -1
+                logger.debug('操作成功')
+            else:
+                logger.error('撤防失败: %s', self.sys_get_error_detail())
+
+
+class HKDoor(HKBaseTool):
+    """门禁设备相关功能"""
 
     @_log_execute_result
     def setup_alarm_chan(self):
-        """布防监听"""
+        """门禁布防监听"""
         if not self.hCNetSDK.NET_DVR_SetDVRMessageCallBack_V31(Callback.fMessageCallBack, ctypes.c_void_p()):
             logger.error('设置布防回调函数失败')
             return
@@ -145,17 +177,6 @@ class HCTools(object):
         lpSetupParam.byDeployType = 1
         self.lAlarmHandle = self.hCNetSDK.NET_DVR_SetupAlarmChan_V41(self.lUserID, byref(lpSetupParam))
         return self.lAlarmHandle > -1
-
-    @_log_execute_result
-    def sys_close_alarm_chan(self):
-        """撤防"""
-        logger.debug('撤防操作'.center(24, '-'))
-        if self.lAlarmHandle > -1:
-            if self.hCNetSDK.NET_DVR_CloseAlarmChan_V30(self.lAlarmHandle):
-                self.lAlarmHandle = -1
-                return True
-            return False
-        return True
 
     @_log_execute_result
     def door_open(self, door_index=1) -> bool:
@@ -178,15 +199,8 @@ class HCTools(object):
     def _control_gateway(self, door_index, status):
         return self.hCNetSDK.NET_DVR_ControlGateway(self.lUserID, door_index, status)
 
-    @_log_execute_result
-    def IPC_stop_real_play(self):
-        """停止预览"""
-        if self.lRealPlayHandle > -1:
-            if self.hCNetSDK.NET_DVR_StopRealPlay(self.lRealPlayHandle):
-                self.lRealPlayHandle = -1
-                return True
-            return False
-        return True
+
+class HKIPCam(HKBaseTool):
 
     @_log_execute_result
     def IPC_setCapturePictureMode(self, dwCaptureMode):
@@ -197,13 +211,13 @@ class HCTools(object):
         return self.hCNetSDK.NET_DVR_SetCapturePictureMode(dwCaptureMode)
 
     @_log_execute_result
-    def IPC_captureJPEGPicture(self, channel: c_long = 1, pic_name=None, quality=2, PicSize=0xff):
+    def IPC_captureJPEGPicture(self, channel: c_long = 1, pic_name=None, quality=2, picSize=0xff):
         """设备抓图，保存到本地jpeg图片"""
         logger.debug('单帧数据捕获并保存jpg'.center(24, '-'))
         if not pic_name:
             pic_name = gen_file_name('jpg')
         logger.debug(pic_name)
-        jpeg_param = Struct.NET_DVR_JPEGPARA(wPicSize=PicSize, wPicQuality=quality)
+        jpeg_param = Struct.NET_DVR_JPEGPARA(wPicSize=picSize, wPicQuality=quality)
         return self.hCNetSDK.NET_DVR_CaptureJPEGPicture(self.lUserID, channel, byref(jpeg_param),
                                                         bytes(pic_name, 'utf-8'))
 
@@ -229,7 +243,7 @@ class HCTools(object):
 
     # todo 未实现
     @_log_execute_result
-    def IPC_captureBMPicture(self, channel: c_long = 1, pic_name=None):
+    def IPC_captureBMPicture(self, pic_name=None):
         """设备抓图，保存到本地bmp图片,
         要求在调用NET_DVR_RealPlay_V40等接口时传入非空的播放句柄（播放库解码显示），否则时接口会返回失败，调用次序错误。
         """
@@ -248,8 +262,10 @@ class HCTools(object):
                     **kwargs):
         """实时预览
         :param channel: 通道号
-        :param dwStreamType: 码流类型，子码流
+        :param stream_type: 码流类型，子码流
         :param link_mode: TCP
+        :param block: 0- 非阻塞取流，1- 阻塞取流
+        :param callback: 回调函数
         """
         # 构造预览参数结构体
         # hPlayWnd需要输入创建图形窗口的handle,没有输入无法实现BMP抓图
@@ -262,21 +278,26 @@ class HCTools(object):
         if self.lRealPlayHandle > -1:
             return True
 
+    @_log_execute_result
+    def IPC_stop_real_play(self):
+        """停止预览"""
+        logger.debug('停止预览'.center(24, '-'))
+        if self.lRealPlayHandle > -1:
+            if self.hCNetSDK.NET_DVR_StopRealPlay(self.lRealPlayHandle):
+                self.lRealPlayHandle = -1
+                return True
+            return False
+        return True
+
+    def sys_clean_up(self):
+        self.IPC_stop_real_play()
+        super(HKIPCam, self).sys_clean_up()
+
 
 if __name__ == '__main__':
-    import time
+    tool = HKBaseTool('10.86.77.12', 'admin', 'admin777')  # IPC
 
-    # tool = HCTools('10.86.23.111', 'admin', 'tsit2020')  # 门禁主机
-    # tool = HCTools('10.86.77.12', 'admin', 'admin777')  # IPC
-    tool = HCTools('10.86.77.119', 'admin', 'admin777')  # 门禁
+    print('SDK Build Version:', tool.sys_get_sdk_bulid_version())
     tool.sys_login()
-    # print(tool.sys_get_error_info())
-
-    # tool.IPC_preview()
-    # tool.IPC_captureBMPicture()
-    # tool.IPC_captureJPEGPicture_NEW(pic_size=2)
-    tool.setup_alarm_chan()
-    tool.door_open()
-    time.sleep(2)
 
     tool.sys_clean_up()
