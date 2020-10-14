@@ -6,8 +6,9 @@ from ctypes.wintypes import LPDWORD
 
 from HCNetSDK import Callback
 from HCNetSDK import Struct
+from HCNetSDK import Constants
 from HCNetSDK.Error import get_error_msg
-from utils import load_dll, gen_file_name
+from utils import load_dll, gen_file_name, createStructure
 
 logging.basicConfig(level='DEBUG', format='[%(name)s:%(lineno)d] [%(levelname)s]- %(message)s')
 
@@ -32,7 +33,7 @@ def _log_execute_result(func):
 
 # todo 单例模式
 class HKBaseTool(object):
-    def __init__(self, ip, username, password, port=8000, sdk_path='../dll/HCNetSDK'):
+    def __init__(self, ip, username, password, port=8000, log_level=3, sdk_path='../dll/HCNetSDK'):
         """创建实例后自动初始化SDK"""
         self.sdk_dll_path = sdk_path
         self.hCNetSDK = None
@@ -41,13 +42,10 @@ class HKBaseTool(object):
         self.sPassword = password
         self.sPort = port
         self.lUserID = -1  # 用户句柄
-        self.lAlarmHandle = -1  # 报警布防句柄
-        self.lListenHandle = -1  # 报警监听句柄
-        self.lRealPlayHandle = -1  # 预览播放句柄
+
         self.lChannel = 1
-        self.logLevel = 3
-        self.fMSFCallBack = None  # 报警回调函数实现
-        self.fMSFCallBack_V31 = None  # 报警回调函数实现
+        self.logLevel = log_level
+
         self.__is_init = False
         self.sys_init_tools()
 
@@ -140,7 +138,6 @@ class HKBaseTool(object):
     def sys_clean_up(self):
         """撤防 + 注销 + 释放SDK资源"""
         if self.is_init:
-            self.sys_close_alarm_chan()
             self.sys_logout()
             self.hCNetSDK.NET_DVR_Cleanup()
             self.__is_init = False
@@ -150,19 +147,24 @@ class HKBaseTool(object):
         if self.is_init:
             self.sys_clean_up()
 
-    def sys_close_alarm_chan(self):
-        """撤防"""
-        if self.lAlarmHandle > -1:
-            logger.debug('撤防操作'.center(24, '-'))
-            if self.hCNetSDK.NET_DVR_CloseAlarmChan_V30(self.lAlarmHandle):
-                self.lAlarmHandle = -1
-                logger.debug('操作成功')
-            else:
-                logger.error('撤防失败: %s', self.sys_get_error_detail())
-
 
 class HKDoor(HKBaseTool):
     """门禁设备相关功能"""
+
+    def __init__(self, *args, **kwargs):
+        super(HKDoor, self).__init__(*args, **kwargs)
+        self.dwState = -1  # 下发卡数据状态
+        self.dwFaceState = -1  # 下发人脸数据状态
+        self.lAlarmHandle = -1  # 报警布防句柄
+        self.lListenHandle = -1  # 报警监听句柄
+        self.fMSFCallBack = None  # 报警回调函数实现
+        self.fMSFCallBack_V31 = None  # 报警回调函数实现
+        self.remoteCfgHandle = -1  # NET_DVR_SendRemoteConfig等接口的句柄
+
+    def __del__(self):
+        self.sys_stop_remote_config()
+        self.sys_close_alarm_chan()
+        super(HKDoor, self).__del__()
 
     @_log_execute_result
     def setup_alarm_chan(self):
@@ -177,6 +179,16 @@ class HKDoor(HKBaseTool):
         lpSetupParam.byDeployType = 1
         self.lAlarmHandle = self.hCNetSDK.NET_DVR_SetupAlarmChan_V41(self.lUserID, byref(lpSetupParam))
         return self.lAlarmHandle > -1
+
+    def sys_close_alarm_chan(self):
+        """撤防"""
+        if self.lAlarmHandle > -1:
+            logger.debug('撤防操作'.center(24, '-'))
+            if self.hCNetSDK.NET_DVR_CloseAlarmChan_V30(self.lAlarmHandle):
+                self.lAlarmHandle = -1
+                logger.debug('操作成功')
+            else:
+                logger.error('撤防失败: %s', self.sys_get_error_detail())
 
     @_log_execute_result
     def door_open(self, door_index=1) -> bool:
@@ -199,8 +211,101 @@ class HKDoor(HKBaseTool):
     def _control_gateway(self, door_index, status):
         return self.hCNetSDK.NET_DVR_ControlGateway(self.lUserID, door_index, status)
 
+    @_log_execute_result
+    def sys_start_remote_config(self, dwCommand, lpInBuffer, dwInBufferLen, cbStateCallback=None,
+                                pUserData=None):
+        """启动远程配置
+        :return: -1表示失败，其他值作为NET_DVR_SendRemoteConfig等接口的句柄
+        """
+        logger.debug('启动长连接远程配置'.center(24, '-'))
+        # -1 表示失败，其他值作为NET_DVR_SendRemoteConfig等接口的句柄
+        if self.remoteCfgHandle > -1:
+            logger.debug('已存在长连接远程配置句柄')
+            return True
+        self.remoteCfgHandle = self.hCNetSDK.NET_DVR_StartRemoteConfig(
+            self.lUserID, dwCommand, lpInBuffer, dwInBufferLen, cbStateCallback, pUserData)
+        return self.remoteCfgHandle != -1
+
+    def sys_stop_remote_config(self):
+        if self.remoteCfgHandle > -1:
+            if self.hCNetSDK.NET_DVR_StopRemoteConfig(self.remoteCfgHandle):
+                logger.debug('成功关闭长连接配置句柄'.center(24, '-'))
+                self.remoteCfgHandle = -1
+            else:
+                logger.error('关闭长连接配置句柄失败！ %s', self.sys_get_error_detail())
+
+    def _print_card_remote_cfg_info(self, struCardRecord):
+        if self.dwState == Constants.NET_SDK_CONFIG_STATUS_NEEDWAIT:
+            logger.debug('配置等待')
+            time.sleep(2)
+            return True
+        elif self.dwState == Constants.NET_SDK_CONFIG_STATUS_SUCCESS:
+            logger.debug(
+                '获取卡参数成功, 卡号: {}, 卡类型: {}, 姓名: {}'.format(
+                    bytes(struCardRecord.byCardNo).decode('ascii'), struCardRecord.byCardType,
+                    bytes(struCardRecord.byName).decode('gbk')))
+            return True
+        elif self.dwState == Constants.NET_SDK_CONFIG_STATUS_FAILED:
+            logger.error('获取卡参数失败', self.sys_get_error_detail())
+        elif self.dwState == Constants.NET_SDK_CONFIG_STATUS_EXCEPTION:
+            logger.error('获取卡参数异常', self.sys_get_error_detail())
+        elif self.dwState == Constants.NET_SDK_CONFIG_STATUS_FINISH:
+            logger.debug('获取卡参数完成')
+        return False
+
+    def door_get_one_card(self, cardNum: str):
+        """查询一个门禁卡参数详细信息"""
+        # 查询一个卡参数
+        commandParam = {'dwSize': ctypes.sizeof(Struct.NET_DVR_CARD_COND), 'dwCardNum': 1}
+        struCardCond = createStructure(Struct.NET_DVR_CARD_COND, commandParam)
+        self.sys_start_remote_config(Constants.NET_DVR_GET_CARD, byref(struCardCond), struCardCond.dwSize)
+
+        # 查找指定卡号的参数，需要下发查找的卡号条件
+        sendParam = {'byCardNo': cardNum, 'dwSize': ctypes.sizeof(Struct.NET_DVR_CARD_SEND_DATA)}
+        struCardNo = createStructure(Struct.NET_DVR_CARD_SEND_DATA, sendParam)
+
+        struCardRecord = createStructure(Struct.NET_DVR_CARD_RECORD,
+                                         {'dwSize': ctypes.sizeof(Struct.NET_DVR_CARD_RECORD)})
+
+        while True:
+            self.dwState = self.hCNetSDK.NET_DVR_SendWithRecvRemoteConfig(
+                self.remoteCfgHandle, byref(struCardNo), struCardNo.dwSize, byref(struCardRecord),
+                struCardRecord.dwSize, ctypes.byref(ctypes.c_int(0)))
+            if self.dwState == -1:
+                logger.error('NET_DVR_SendWithRecvRemoteConfig查询卡参数调用失败, %s', self.sys_get_error_detail())
+                break
+            if self._print_card_remote_cfg_info(struCardRecord):
+                continue
+            break
+        self.sys_stop_remote_config()
+
+    def door_get_all_card(self):
+        """读取所有门禁卡信息"""
+        commandParam = {'dwSize': ctypes.sizeof(Struct.NET_DVR_CARD_COND), 'dwCardNum': 0xffffffff}
+        struCardCond = createStructure(Struct.NET_DVR_CARD_COND, commandParam)
+
+        self.sys_start_remote_config(Constants.NET_DVR_GET_CARD, byref(struCardCond), struCardCond.dwSize)
+
+        struCardRecord = createStructure(Struct.NET_DVR_CARD_RECORD,
+                                         {'dwSize': ctypes.sizeof(Struct.NET_DVR_CARD_RECORD)})
+
+        while True:
+            self.dwState = self.hCNetSDK.NET_DVR_GetNextRemoteConfig(self.remoteCfgHandle, byref(struCardRecord),
+                                                                     struCardRecord.dwSize)
+            if self.dwState == -1:
+                logger.error('NET_DVR_GetNextRemoteConfig接口调用失败, %s', self.sys_get_error_detail())
+                break
+            if self._print_card_remote_cfg_info(struCardRecord):
+                continue
+            break
+        self.sys_stop_remote_config()
+
 
 class HKIPCam(HKBaseTool):
+
+    def __init__(self, *args, **kwargs):
+        super(HKIPCam, self).__init__(*args, **kwargs)
+        self.lRealPlayHandle = -1  # 预览播放句柄
 
     @_log_execute_result
     def IPC_setCapturePictureMode(self, dwCaptureMode):
