@@ -34,19 +34,21 @@ Python整数作为平台默认的C int类型传递，它们的值被屏蔽以适
 | c_longdouble | long double                              | float                    |
 | c_char_p     | char \* (NUL terminated)                 | bytes object or None     |
 | c_wchar_p    | wchar_t \* (NUL terminated)              | string or None           |
-| c_void_p     | void \*                                  | int or None              |
+| c_void_p、LPVOID| void \*                                  | int or None              |
 
 
 ### 开发方法
 
 ### 结构体转换
 
-基本类型转换见上面，嵌套结构体即结构体名
+- 基本类型转换见上面，嵌套结构体即结构体名.  
+- `byte * n` 数组类型传入 `bytes('xxx', 'ascii')`。  
+- 同样地将 `ctypes_Array_n` 数组转为python字符串也用 `bytes()`，或者用 `cast(strct.name, c_char_p).value`强制转为为字符串
 
 ### 参数
 
 1. 基本类型：转换参照上表
-2. 指针类型： 传入 `byref(xxx)` 
+2. 指针类型： 传入 `byref(xxx)` ，例如：整形指针 byref(c_int(0))
 3. char* : 传入 `bytes(xxx, 'utf-8'))`
 4. 缓冲区指针：
     - 开辟：`buf = ctypes.create_string_buffer(缓冲大小)`
@@ -54,6 +56,7 @@ Python整数作为平台默认的C int类型传递，它们的值被屏蔽以适
 5. `LPDWORD`
     - 方式一：先创建 `a = ctypes.c_ulong(0)`，再传入 `bytef(a)`，事后打印 `a.value`
     - 方式二：先创建 `a = LPDWORD(ctypes.c_ulong(0))`， 直接传入 `a`，事后打印 `a[0]`
+
 ### 回调函数
 
 1. 声明：`callback = CFUNCTYPE（返回值类型，参数1类型， 参数2类型，。。。）`
