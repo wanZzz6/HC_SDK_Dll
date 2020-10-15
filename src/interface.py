@@ -262,17 +262,40 @@ class HKDoor(HKBaseTool):
             return True
         elif self.dwState == Constants.NET_SDK_CONFIG_STATUS_SUCCESS:
             if self.sys_get_error_code() != 0:
-                logger.error('下发卡成功，但是有错误，卡号: %s, %s', self.sys_get_error_detail())
+                logger.error('下发卡成功，但是有错误，卡号: %s, 错误码：%s', bytes(struCardStatus.byCardNo).decode(),
+                             struCardStatus.dwErrorCode)
             else:
-                logger.debug('下发卡成功，卡号: %s, 状态: %s'.format(bytes(struCardStatus.byCardNo).decode('ascii'),
-                                                           struCardStatus.byStatus, ))
+                logger.debug('下发卡成功，卡号: %s, 状态: %s', bytes(struCardStatus.byCardNo).decode('ascii'),
+                             struCardStatus.byStatus)
             return True
         elif self.dwState == Constants.NET_SDK_CONFIG_STATUS_FAILED:
-            logger.error('下发卡失败， 卡号：%s, %s', bytes(struCardStatus.byCardNo).decode(), self.sys_get_error_detail())
+            logger.error('下发卡失败，卡号：%s, 错误码：%s', bytes(struCardStatus.byCardNo).decode(), struCardStatus.dwErrorCode)
         elif self.dwState == Constants.NET_SDK_CONFIG_STATUS_EXCEPTION:
             logger.error('下发卡异常，卡号：%s, 错误码：%s', bytes(struCardStatus.byCardNo).decode(), struCardStatus.dwErrorCode)
         elif self.dwState == Constants.NET_SDK_CONFIG_STATUS_FINISH:
             logger.debug('下发卡完成')
+        return False
+
+    def _print_del_card_status(self, struCardStatus):
+        """删除卡状态"""
+        if self.dwState == Constants.NET_SDK_CONFIG_STATUS_NEEDWAIT:
+            logger.debug('配置等待')
+            time.sleep(2)
+            return True
+        elif self.dwState == Constants.NET_SDK_CONFIG_STATUS_SUCCESS:
+            if self.sys_get_error_code() != 0:
+                logger.error('删除卡成功，但是有错误，卡号: %s, 错误码：%s', bytes(struCardStatus.byCardNo).decode(),
+                             struCardStatus.dwErrorCode)
+            else:
+                logger.debug('删除卡成功，卡号: %s, 状态: %s', bytes(struCardStatus.byCardNo).decode('ascii'),
+                             struCardStatus.byStatus)
+            return True
+        elif self.dwState == Constants.NET_SDK_CONFIG_STATUS_FAILED:
+            logger.error('删除卡失败，卡号：%s, 错误码：%s', bytes(struCardStatus.byCardNo).decode(), struCardStatus.dwErrorCode)
+        elif self.dwState == Constants.NET_SDK_CONFIG_STATUS_EXCEPTION:
+            logger.error('删除卡异常，卡号：%s, 错误码：%s', bytes(struCardStatus.byCardNo).decode(), struCardStatus.dwErrorCode)
+        elif self.dwState == Constants.NET_SDK_CONFIG_STATUS_FINISH:
+            logger.debug('删除卡完成')
         return False
 
     def door_get_one_card(self, cardNum: str):
@@ -360,7 +383,33 @@ class HKDoor(HKBaseTool):
             if self.dwState == -1:
                 logger.error('NET_DVR_SendWithRecvRemoteConfig调用失败, %s', self.sys_get_error_detail())
                 break
-            if self._print_get_card_status(struCardRecord):
+            if self._print_set_card_status(struCardStatus):
+                continue
+            break
+        self.sys_stop_remote_config()
+
+    def door_del_one_card(self, card_num: str):
+        """删除一张门禁卡"""
+        # 创建发送命令结构体：删除一张卡参数
+        commandParam = {'dwSize': ctypes.sizeof(Struct.NET_DVR_CARD_COND), 'dwCardNum': 1}
+        struCardCond = createStructure(Struct.NET_DVR_CARD_COND, commandParam)
+        self.sys_start_remote_config(Constants.NET_DVR_DEL_CARD, byref(struCardCond), struCardCond.dwSize)
+
+        # 删除指定卡号的参数
+        sendParam = {'byCardNo': card_num, 'dwSize': ctypes.sizeof(Struct.NET_DVR_CARD_SEND_DATA)}
+        struCardData = createStructure(Struct.NET_DVR_CARD_SEND_DATA, sendParam)
+
+        struCardStatus = createStructure(Struct.NET_DVR_CARD_STATUS,
+                                         {'dwSize': ctypes.sizeof(Struct.NET_DVR_CARD_STATUS)})
+
+        while True:
+            self.dwState = self.hCNetSDK.NET_DVR_SendWithRecvRemoteConfig(
+                self.remoteCfgHandle, byref(struCardData), struCardData.dwSize, byref(struCardStatus),
+                struCardStatus.dwSize, byref(ctypes.c_int(0)))
+            if self.dwState == -1:
+                logger.error('NET_DVR_SendWithRecvRemoteConfig调用失败, %s', self.sys_get_error_detail())
+                break
+            if self._print_del_card_status(struCardStatus):
                 continue
             break
         self.sys_stop_remote_config()

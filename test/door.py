@@ -16,5 +16,7 @@ if __name__ == '__main__':
     ###############################
     # tool.door_get_one_card('9527')
     ###############################
-    # tool.door_set_one_card('123459', byDoorRight='10')
+    # tool.door_set_one_card('123456', byDoorRight='1')
+    ###############################
+    tool.door_del_one_card('123456')
     tool.sys_clean_up()
