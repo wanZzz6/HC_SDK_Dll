@@ -274,23 +274,33 @@ class NET_DVR_CARD_SEND_DATA(Structure):
 class NET_DVR_CARD_RECORD(Structure):
     _fields_ = [
         ('dwSize', DWORD),
+        # 卡号，特殊卡号定义如下：
+        # 0xFFFFFFFFFFFFFFFF：非法卡号
+        # 0xFFFFFFFFFFFFFFFE：胁迫码
+        # 0xFFFFFFFFFFFFFFFD：超级码
+        # 0xFFFFFFFFFFFFFFFC~0xFFFFFFFFFFFFFFF1：预留的特殊卡
+        # 0xFFFFFFFFFFFFFFF0：最大合法卡号
         ('byCardNo', BYTE * ACS_CARD_NO_LEN),
+        # 1- 普通卡（默认），2- 残疾人卡，3- 黑名单卡，4- 巡更卡，5- 胁迫卡，6- 超级卡，7- 来宾卡，8- 解除卡，9- 员工卡，10- 应急卡，
+        # 11- 应急管理卡（用于授权临时卡权限，本身不能开门），默认普通卡
         ('byCardType', BYTE),
-        ('byLeaderCard', BYTE),
-        ('byUserType', BYTE),
-        ('byRes1', BYTE),
+        ('byLeaderCard', BYTE),  # 是否为首卡：1- 是，0- 否
+        ('byUserType', BYTE),  # 用户类型：0–普通用户 1-管理员用户
+        ('byRes1', BYTE),  # 保留，置为0
+        # 门权限（梯控的楼层权限、锁权限），按字节表示，1-为有权限，0-为无权限，从低位到高位依次表示对门（或者梯控楼层、锁）1-N是否有权限
         ('byDoorRight', BYTE * MAX_DOOR_NUM_256),
-        ('struValid', NET_DVR_VALID_PERIOD_CFG),
-        ('byBelongGroup', BYTE * MAX_GROUP_NUM_128),
-        ('byCardPassword', BYTE * CARD_PASSWORD_LEN),
-        ('wCardRightPlan', WORD * MAX_DOOR_NUM_256),
-        ('dwMaxSwipeTimes', DWORD),
-        ('dwSwipeTimes', DWORD),
-        ('dwEmployeeNo', DWORD),
-        ('byName', BYTE * NAME_LEN),
-        # 按位表示，0-无权限，1-有权限// 第0位表示：弱电报警// 第1位表示：开门提示音// 第2位表示：限制客卡// 第3位表示：通道// 第4位表示：反锁开门// 第5位表示：巡更功能
+        ('struValid', NET_DVR_VALID_PERIOD_CFG),  # 有效期参数（有效时间跨度为1970年1月1日0点0分0秒~2037年12月31日23点59分59秒）
+        ('byBelongGroup', BYTE * MAX_GROUP_NUM_128),  # 所属群组，按字节表示，1-属于，0-不属于，从低位到高位表示是否从属群组1~N
+        ('byCardPassword', BYTE * CARD_PASSWORD_LEN),  # 卡密码
+        ('wCardRightPlan', WORD * MAX_DOOR_NUM_256),  # 卡权限计划，取值为计划模板编号，同个门（锁）不同计划模板采用权限或的方式处理
+        ('dwMaxSwipeTimes', DWORD),  # 最大刷卡次数，0为无次数限制
+        ('dwSwipeTimes', DWORD),  # 已刷卡次数
+        ('dwEmployeeNo', DWORD),  # 工号（用户ID），1~99999999，不能以0开头且不能重复
+        ('byName', BYTE * NAME_LEN),  # 姓名
+        # 卡权限，按位表示，0-无权限，1-有权限// 第0位表示：弱电报警// 第1位表示：开门提示音// 第2位表示：限制客卡// 第3位表示：通道
+        # 第4位表示：反锁开门// 第5位表示：巡更功能
         ('dwCardRight', DWORD),
-        ('byRes', BYTE * 256),
+        ('byRes', BYTE * 256),  # 保留，置为0
     ]
 
 

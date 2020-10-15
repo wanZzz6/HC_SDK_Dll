@@ -12,8 +12,9 @@ if __name__ == '__main__':
     # tool.door_open(1)
     # time.sleep(2)
     ###############################
-    tool.door_get_all_card()
+    # tool.door_get_all_card()
     ###############################
     # tool.door_get_one_card('9527')
-
+    ###############################
+    # tool.door_set_one_card('123459', byDoorRight='10')
     tool.sys_clean_up()

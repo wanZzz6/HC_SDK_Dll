@@ -5,8 +5,8 @@ from ctypes import byref, c_long
 from ctypes.wintypes import LPDWORD
 
 from HCNetSDK import Callback
-from HCNetSDK import Struct
 from HCNetSDK import Constants
+from HCNetSDK import Struct
 from HCNetSDK.Error import get_error_msg
 from utils import load_dll, gen_file_name, createStructure
 
@@ -161,10 +161,10 @@ class HKDoor(HKBaseTool):
         self.fMSFCallBack_V31 = None  # 报警回调函数实现
         self.remoteCfgHandle = -1  # NET_DVR_SendRemoteConfig等接口的句柄
 
-    def __del__(self):
+    def sys_clean_up(self):
         self.sys_stop_remote_config()
         self.sys_close_alarm_chan()
-        super(HKDoor, self).__del__()
+        super(HKDoor, self).sys_clean_up()
 
     @_log_execute_result
     def setup_alarm_chan(self):
@@ -234,7 +234,8 @@ class HKDoor(HKBaseTool):
             else:
                 logger.error('关闭长连接配置句柄失败！ %s', self.sys_get_error_detail())
 
-    def _print_card_remote_cfg_info(self, struCardRecord):
+    def _print_get_card_status(self, struCardRecord):
+        """获取卡状态"""
         if self.dwState == Constants.NET_SDK_CONFIG_STATUS_NEEDWAIT:
             logger.debug('配置等待')
             time.sleep(2)
@@ -246,16 +247,37 @@ class HKDoor(HKBaseTool):
                     bytes(struCardRecord.byName).decode('gbk')))
             return True
         elif self.dwState == Constants.NET_SDK_CONFIG_STATUS_FAILED:
-            logger.error('获取卡参数失败', self.sys_get_error_detail())
+            logger.error('获取卡参数失败，%s', self.sys_get_error_detail())
         elif self.dwState == Constants.NET_SDK_CONFIG_STATUS_EXCEPTION:
-            logger.error('获取卡参数异常', self.sys_get_error_detail())
+            logger.error('获取卡参数异常，%s', self.sys_get_error_detail())
         elif self.dwState == Constants.NET_SDK_CONFIG_STATUS_FINISH:
             logger.debug('获取卡参数完成')
         return False
 
+    def _print_set_card_status(self, struCardStatus):
+        """下发卡状态"""
+        if self.dwState == Constants.NET_SDK_CONFIG_STATUS_NEEDWAIT:
+            logger.debug('配置等待')
+            time.sleep(2)
+            return True
+        elif self.dwState == Constants.NET_SDK_CONFIG_STATUS_SUCCESS:
+            if self.sys_get_error_code() != 0:
+                logger.error('下发卡成功，但是有错误，卡号: %s, %s', self.sys_get_error_detail())
+            else:
+                logger.debug('下发卡成功，卡号: %s, 状态: %s'.format(bytes(struCardStatus.byCardNo).decode('ascii'),
+                                                           struCardStatus.byStatus, ))
+            return True
+        elif self.dwState == Constants.NET_SDK_CONFIG_STATUS_FAILED:
+            logger.error('下发卡失败， 卡号：%s, %s', bytes(struCardStatus.byCardNo).decode(), self.sys_get_error_detail())
+        elif self.dwState == Constants.NET_SDK_CONFIG_STATUS_EXCEPTION:
+            logger.error('下发卡异常，卡号：%s, 错误码：%s', bytes(struCardStatus.byCardNo).decode(), struCardStatus.dwErrorCode)
+        elif self.dwState == Constants.NET_SDK_CONFIG_STATUS_FINISH:
+            logger.debug('下发卡完成')
+        return False
+
     def door_get_one_card(self, cardNum: str):
         """查询一个门禁卡参数详细信息"""
-        # 查询一个卡参数
+        # 创建发送命令结构体：查询一张卡参数
         commandParam = {'dwSize': ctypes.sizeof(Struct.NET_DVR_CARD_COND), 'dwCardNum': 1}
         struCardCond = createStructure(Struct.NET_DVR_CARD_COND, commandParam)
         self.sys_start_remote_config(Constants.NET_DVR_GET_CARD, byref(struCardCond), struCardCond.dwSize)
@@ -263,7 +285,7 @@ class HKDoor(HKBaseTool):
         # 查找指定卡号的参数，需要下发查找的卡号条件
         sendParam = {'byCardNo': cardNum, 'dwSize': ctypes.sizeof(Struct.NET_DVR_CARD_SEND_DATA)}
         struCardNo = createStructure(Struct.NET_DVR_CARD_SEND_DATA, sendParam)
-
+        # 存储卡信息结构体
         struCardRecord = createStructure(Struct.NET_DVR_CARD_RECORD,
                                          {'dwSize': ctypes.sizeof(Struct.NET_DVR_CARD_RECORD)})
 
@@ -274,18 +296,19 @@ class HKDoor(HKBaseTool):
             if self.dwState == -1:
                 logger.error('NET_DVR_SendWithRecvRemoteConfig查询卡参数调用失败, %s', self.sys_get_error_detail())
                 break
-            if self._print_card_remote_cfg_info(struCardRecord):
+            if self._print_get_card_status(struCardRecord):
                 continue
             break
         self.sys_stop_remote_config()
 
     def door_get_all_card(self):
         """读取所有门禁卡信息"""
+        # 创建发送命令结构体：所有卡信息0xffffffff
         commandParam = {'dwSize': ctypes.sizeof(Struct.NET_DVR_CARD_COND), 'dwCardNum': 0xffffffff}
         struCardCond = createStructure(Struct.NET_DVR_CARD_COND, commandParam)
 
         self.sys_start_remote_config(Constants.NET_DVR_GET_CARD, byref(struCardCond), struCardCond.dwSize)
-
+        # 创建卡信息结构体，用于存储卡信息
         struCardRecord = createStructure(Struct.NET_DVR_CARD_RECORD,
                                          {'dwSize': ctypes.sizeof(Struct.NET_DVR_CARD_RECORD)})
 
@@ -295,7 +318,49 @@ class HKDoor(HKBaseTool):
             if self.dwState == -1:
                 logger.error('NET_DVR_GetNextRemoteConfig接口调用失败, %s', self.sys_get_error_detail())
                 break
-            if self._print_card_remote_cfg_info(struCardRecord):
+            if self._print_get_card_status(struCardRecord):
+                continue
+            break
+        self.sys_stop_remote_config()
+
+    def door_set_one_card(self, card_num: str, byDoorRight: str = '1', byCardType=1, byName='张三', **kwargs):
+        """下发一张门禁卡
+        :param byCardType: 1=普通卡
+        :param byDoorRight: 1-为有权限，0-为无权限，从低位到高位依次表示对门
+        :param card_num: 卡号
+        :param byName: 姓名
+        """
+        commandParam = {'dwSize': ctypes.sizeof(Struct.NET_DVR_CARD_COND), 'dwCardNum': 1}  # 下发一张
+        struct_card_condition = createStructure(Struct.NET_DVR_CARD_COND, commandParam)
+        self.sys_start_remote_config(Constants.NET_DVR_SET_CARD, byref(struct_card_condition),
+                                     struct_card_condition.dwSize)
+
+        # 起止时间
+        param_begin_time = {'wYear': 2000, 'byMonth': 1, 'byDay': 1, 'byHour': 11, 'byMinute': 11, 'bySecond': 11}
+        struct_begin_time = createStructure(Struct.NET_DVR_TIME_EX, param_begin_time)
+        param_end_time = {'wYear': 2099, 'byMonth': 1, 'byDay': 1, 'byHour': 11, 'byMinute': 11, 'bySecond': 11}
+        struct_end_time = createStructure(Struct.NET_DVR_TIME_EX, param_end_time)
+        # 有效期参数
+        valid_param = {'byEnable': 1, 'struBeginTime': struct_begin_time, 'struEndTime': struct_end_time}
+        struct_valid = createStructure(Struct.NET_DVR_VALID_PERIOD_CFG, valid_param)
+
+        param_card = {'dwSize': ctypes.sizeof(Struct.NET_DVR_CARD_RECORD), 'byCardNo': card_num,
+                      'byCardType': byCardType, 'byLeaderCard': 0, 'byUserType': 0, 'byDoorRight': byDoorRight,
+                      'struValid': struct_valid, 'wCardRightPlan': '11', 'byName': byName}
+        param_card.update(kwargs)
+        struCardRecord = createStructure(Struct.NET_DVR_CARD_RECORD, param_card)
+
+        struCardStatus = createStructure(Struct.NET_DVR_CARD_STATUS,
+                                         {'dwSize': ctypes.sizeof(Struct.NET_DVR_CARD_STATUS)})
+
+        while True:
+            self.dwState = self.hCNetSDK.NET_DVR_SendWithRecvRemoteConfig(
+                self.remoteCfgHandle, byref(struCardRecord), struCardRecord.dwSize, byref(struCardStatus),
+                struCardStatus.dwSize, byref(ctypes.c_int(0)))
+            if self.dwState == -1:
+                logger.error('NET_DVR_SendWithRecvRemoteConfig调用失败, %s', self.sys_get_error_detail())
+                break
+            if self._print_get_card_status(struCardRecord):
                 continue
             break
         self.sys_stop_remote_config()
