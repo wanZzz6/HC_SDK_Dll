@@ -15,6 +15,7 @@ logging.basicConfig(level='DEBUG', format='[%(name)s:%(lineno)d] [%(levelname)s]
 logger = logging.getLogger('SDK_Tools')
 
 
+# todo 创建结构体全部改为creatSturcture
 class SDKError(Exception):
     pass
 
@@ -161,22 +162,23 @@ class HKDoor(HKBaseTool):
         self.fMSFCallBack_V31 = None  # 报警回调函数实现
         self.remoteCfgHandle = -1  # NET_DVR_SendRemoteConfig等接口的句柄
 
+        self._card_numbers = set()  # 保存门禁所有卡号
+
     def sys_clean_up(self):
         self.sys_stop_remote_config()
         self.sys_close_alarm_chan()
         super(HKDoor, self).sys_clean_up()
 
     @_log_execute_result
-    def setup_alarm_chan(self):
+    def setup_alarm_chan(self, callback=Callback.fMessageCallBack):
         """门禁布防监听"""
-        if not self.hCNetSDK.NET_DVR_SetDVRMessageCallBack_V31(Callback.fMessageCallBack, ctypes.c_void_p()):
+        if not self.hCNetSDK.NET_DVR_SetDVRMessageCallBack_V31(callback, ctypes.c_void_p()):
             logger.error('设置布防回调函数失败')
             return
-        lpSetupParam = Struct.NET_DVR_SETUPALARM_PARAM()
         # 报警布防参数
-        lpSetupParam.byLevel = 1
-        lpSetupParam.byAlarmInfoType = 1
-        lpSetupParam.byDeployType = 1
+        param = {'byLevel': 1, 'byAlarmInfoType': 1, 'byDeployType': 1}
+        lpSetupParam = createStructure(Struct.NET_DVR_SETUPALARM_PARAM, param)
+
         self.lAlarmHandle = self.hCNetSDK.NET_DVR_SetupAlarmChan_V41(self.lUserID, byref(lpSetupParam))
         return self.lAlarmHandle > -1
 
@@ -234,17 +236,19 @@ class HKDoor(HKBaseTool):
             else:
                 logger.error('关闭长连接配置句柄失败！ %s', self.sys_get_error_detail())
 
-    def _print_get_card_status(self, struCardRecord):
+    def get_card_status_callback(self, struCardRecord):
         """获取卡状态"""
         if self.dwState == Constants.NET_SDK_CONFIG_STATUS_NEEDWAIT:
             logger.debug('配置等待')
             time.sleep(2)
             return True
         elif self.dwState == Constants.NET_SDK_CONFIG_STATUS_SUCCESS:
+            card_num = bytes(struCardRecord.byCardNo).strip(b'\x00').decode('ascii')
             logger.debug(
                 '获取卡参数成功, 卡号: {}, 卡类型: {}, 姓名: {}'.format(
-                    bytes(struCardRecord.byCardNo).decode('ascii'), struCardRecord.byCardType,
-                    bytes(struCardRecord.byName).decode('gbk')))
+                    card_num, struCardRecord.byCardType, bytes(struCardRecord.byName).decode('gbk')))
+
+            self._card_numbers.add(card_num)
             return True
         elif self.dwState == Constants.NET_SDK_CONFIG_STATUS_FAILED:
             logger.error('获取卡参数失败，%s', self.sys_get_error_detail())
@@ -319,7 +323,7 @@ class HKDoor(HKBaseTool):
             if self.dwState == -1:
                 logger.error('NET_DVR_SendWithRecvRemoteConfig查询卡参数调用失败, %s', self.sys_get_error_detail())
                 break
-            if self._print_get_card_status(struCardRecord):
+            if self.get_card_status_callback(struCardRecord):
                 continue
             break
         self.sys_stop_remote_config()
@@ -335,16 +339,20 @@ class HKDoor(HKBaseTool):
         struCardRecord = createStructure(Struct.NET_DVR_CARD_RECORD,
                                          {'dwSize': ctypes.sizeof(Struct.NET_DVR_CARD_RECORD)})
 
+        # clear
+        self._card_numbers = set()
         while True:
             self.dwState = self.hCNetSDK.NET_DVR_GetNextRemoteConfig(self.remoteCfgHandle, byref(struCardRecord),
                                                                      struCardRecord.dwSize)
             if self.dwState == -1:
                 logger.error('NET_DVR_GetNextRemoteConfig接口调用失败, %s', self.sys_get_error_detail())
                 break
-            if self._print_get_card_status(struCardRecord):
+            if self.get_card_status_callback(struCardRecord):
                 continue
             break
         self.sys_stop_remote_config()
+
+        return list(self._card_numbers)
 
     def door_set_one_card(self, card_num: str, byDoorRight: str = '1', byCardType=1, byName='张三', **kwargs):
         """下发一张门禁卡
