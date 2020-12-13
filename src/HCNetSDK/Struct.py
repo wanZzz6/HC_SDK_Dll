@@ -1,17 +1,12 @@
 from ctypes import *
-from ctypes.wintypes import DWORD
-from ctypes.wintypes import WORD
-from ctypes.wintypes import USHORT
-from ctypes.wintypes import BOOL
-from ctypes.wintypes import LONG
-from ctypes.wintypes import BYTE
-from ctypes.wintypes import UINT
-from ctypes.wintypes import LPVOID
-from ctypes.wintypes import HANDLE
-from ctypes.wintypes import COLORREF
-from ctypes.wintypes import HWND
+from src.wintypes import BOOL
+from src.wintypes import BYTE
+from src.wintypes import DWORD
+from src.wintypes import HWND
+from src.wintypes import LONG
+from src.wintypes import WORD
 
-from Constants import *
+from src.HCNetSDK.Constants import *
 
 
 # 定义登录结构体

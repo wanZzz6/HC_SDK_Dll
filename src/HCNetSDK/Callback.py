@@ -1,7 +1,7 @@
 from ctypes import *
-from ctypes.wintypes import *
-import Struct
-from Constants import *
+from src.wintypes import *
+from src.HCNetSDK import Struct
+from src.HCNetSDK.Constants import *
 import struct
 
 # 定义码流回调函数
@@ -19,7 +19,7 @@ def _fRealDataCallBack_V30(lPlayHandle, dwDataType, pBuffer, dwBufSize, pUser):
 fRealDataCallBack_V30 = REALDATACALLBACK(_fRealDataCallBack_V30)
 
 # 接收设备报警消息等
-MSGCallBack_V31 = WINFUNCTYPE(BOOL, LONG, Struct.NET_DVR_ALARMER, POINTER(c_char), DWORD, LPVOID)
+MSGCallBack_V31 = CFUNCTYPE(BOOL, LONG, Struct.NET_DVR_ALARMER, POINTER(c_char), DWORD, LPVOID)
 
 
 def _fMessageCallBack(lCommand: LONG, pAlarmer: Struct.NET_DVR_ALARMER, pAlarmInfo: POINTER(c_char), dwBufLen: DWORD,

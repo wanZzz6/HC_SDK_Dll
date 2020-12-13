@@ -1,6 +1,6 @@
 import ctypes
-import ctypes.wintypes
 import datetime
+import sys
 import os
 import uuid
 from typing import Union, List
@@ -9,15 +9,24 @@ from logging import getLogger
 logger = getLogger('HK_utils')
 
 
+#
+# def load_dll(path):
+#     cwd = os.getcwd()
+#     dir_name, file_name = os.path.split(os.path.abspath(path))
+#     try:
+#         os.chdir(dir_name)
+#         dll_lib = ctypes.WinDLL(file_name)
+#         return dll_lib
+#     finally:
+#         os.chdir(cwd)
+
 def load_dll(path):
-    cwd = os.getcwd()
-    dir_name, file_name = os.path.split(os.path.abspath(path))
-    try:
-        os.chdir(dir_name)
+    file_name = os.path.abspath(path)
+    if sys.platform == 'win32':
         dll_lib = ctypes.WinDLL(file_name)
-        return dll_lib
-    finally:
-        os.chdir(cwd)
+    else:
+        dll_lib = ctypes.CDLL(os.path.abspath(file_name))
+    return dll_lib
 
 
 def gen_file_name(extention='jpg', way='time') -> str:

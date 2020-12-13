@@ -2,7 +2,7 @@ import ctypes
 import logging
 import time
 from ctypes import byref, c_long
-from ctypes.wintypes import LPDWORD
+from wintypes import LPDWORD
 
 from HCNetSDK import Callback
 from HCNetSDK import Constants
@@ -34,7 +34,7 @@ def _log_execute_result(func):
 
 # todo 单例模式
 class HKBaseTool(object):
-    def __init__(self, ip, username, password, port=8000, log_level=3, sdk_path='../dll/HCNetSDK'):
+    def __init__(self, ip, username, password, port=8000, log_level=3, sdk_path='../dll/libhcnetsdk.so'):
         """创建实例后自动初始化SDK"""
         self.sdk_dll_path = sdk_path
         self.hCNetSDK = None
@@ -422,7 +422,7 @@ class HKDoor(HKBaseTool):
             break
         self.sys_stop_remote_config()
 
-
+from PIL import Image
 class HKIPCam(HKBaseTool):
 
     def __init__(self, *args, **kwargs):
