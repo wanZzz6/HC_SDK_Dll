@@ -458,13 +458,13 @@ class HKIPCam(HKBaseTool):
         jpeg_param = Struct.NET_DVR_JPEGPARA(wPicSize=pic_size, wPicQuality=quality)
         buffer_size = 1024 * 1024
         sJpegPicBuffer = ctypes.create_string_buffer(buffer_size)
-        lpSizeReturned = LPDWORD(ctypes.c_ulong(0))
+        lpSizeReturned = ctypes.c_ulong(0)
         if self.hCNetSDK.NET_DVR_CaptureJPEGPicture_NEW(self.lUserID, channel, byref(jpeg_param), sJpegPicBuffer,
                                                         buffer_size, ctypes.byref(lpSizeReturned)):
             logger.debug('抓图成功')
             with open(pic_name, 'wb') as f:
                 f.write(sJpegPicBuffer.raw)
-                logger.debug('图片大小: %s', lpSizeReturned[0])
+                logger.debug('图片大小: %s', lpSizeReturned)
             return True
         return False
 
